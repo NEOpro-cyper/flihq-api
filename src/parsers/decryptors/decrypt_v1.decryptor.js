@@ -49,6 +49,7 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
 
       console.log("=== STEP 3: Embed page length ===", embedPage.length);
       console.log("=== STEP 3: Embed page snippet ===", embedPage.substring(0, 500));
+      console.log("=== STEP 3: FULL EMBED PAGE ===", embedPage);
 
       // Try all possible _k patterns
       const keyMatch1 = embedPage.match(/getSources\?id=[^&]+&_k=([^"'&\s\\]+)/);
