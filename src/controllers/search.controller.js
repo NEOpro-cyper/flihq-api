@@ -5,7 +5,7 @@ export const search = async (req) => {
     const keyword = req.query.keyword || "";
     const page = parseInt(req.query.page) || 1;
 
-    if (!keyword) throw new Error("Missing keyword param");
+    if (!keyword) return { data: [], totalPage: 0 };
 
     const [totalPage, data] = await extractSearchResults({ keyword, page });
 
