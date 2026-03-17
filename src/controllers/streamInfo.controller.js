@@ -2,14 +2,15 @@ import { extractStreamingInfo } from "../extractors/streamInfo.extractor.js";
 
 export const getStreamInfo = async (req, res, fallback = false) => {
   try {
-    const input = req.query.id;
-    const server = req.query.server;
-    const type = req.query.type;
-    const match = input.match(/ep=(\d+)/);
-    if (!match) throw new Error("Invalid URL format");
-    const finalId = match[1];
-    const streamingInfo = await extractStreamingInfo(finalId, server, type, fallback);
-    return streamingInfo;
+    // /api/stream?id=13228416&server=UpCloud&type=movie
+    const id = req.query.id;
+    const server = req.query.server || "upcloud";
+    const type = req.query.type || "movie";
+
+    if (!id) throw new Error("Missing id param");
+
+    const data = await extractStreamingInfo(id, server, type, fallback);
+    return data;
   } catch (e) {
     console.error(e);
     return { error: e.message };
