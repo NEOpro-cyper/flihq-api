@@ -30,13 +30,6 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
 
     } else {
       iframeURL = epID;
-      console.log("=== STEP 1: Embed URL ===", epID);
-
-      // Extract sourceId
-      const sourceIdMatch = /\/e-1\/([^?/]+)/.exec(epID);
-      const sourceId = sourceIdMatch?.[1];
-      console.log("=== STEP 2: sourceId ===", sourceId);
-      if (!sourceId) throw new Error("Cannot extract sourceId from: " + epID);
 
       // Fetch embed page
       const { data: embedPage } = await axios.get(epID, {
@@ -47,25 +40,26 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
         },
       });
 
-      console.log("=== STEP 3: Embed page length ===", embedPage.length);
-      console.log("=== STEP 3: Embed page snippet ===", embedPage.substring(0, 500));
-      console.log("=== STEP 3: FULL EMBED PAGE ===", embedPage);
+      const $ = cheerio.load(embedPage);
 
-      // Try all possible _k patterns
-      const keyMatch1 = embedPage.match(/getSources\?id=[^&]+&_k=([^"'&\s\\]+)/);
-      const keyMatch2 = embedPage.match(/_k=([^"'&\s\\]+)/);
-      const keyMatch3 = embedPage.match(/['"_]k['"]\s*[:=]\s*['"]([^'"]+)['"]/);
+      // Get sourceId from data-id attribute of player
+      const sourceId = $("#megacloud-player").attr("data-id");
+      if (!sourceId) throw new Error("Cannot find data-id in embed page");
+      console.log("sourceId from player:", sourceId);
 
-      console.log("=== STEP 4: keyMatch1 ===", keyMatch1?.[1]);
-      console.log("=== STEP 4: keyMatch2 ===", keyMatch2?.[1]);
-      console.log("=== STEP 4: keyMatch3 ===", keyMatch3?.[1]);
+      // Get key from _is_th comment
+      // <!-- _is_th:Mv9eR4JFBZM8YcOAYipVhe0xFjQc6k0zXvsYOWVgZzBfDMUZ -->
+      const isThMatch = embedPage.match(/_is_th:([A-Za-z0-9]+)/);
+      const _k = isThMatch?.[1];
+      console.log("_k from _is_th:", _k);
+      if (!_k) throw new Error("Cannot extract _k from _is_th comment");
 
-      const _k = keyMatch1?.[1] || keyMatch2?.[1] || keyMatch3?.[1];
-      if (!_k) throw new Error("Cannot extract _k key from embed page");
-
-      const baseUrl = epID.split("/e-1/")[0];
-      const sourcesUrl = `${baseUrl}/e-1/getSources?id=${sourceId}&_k=${_k}`;
-      console.log("=== STEP 5: sourcesUrl ===", sourcesUrl);
+      // Build getSources URL
+      // https://videostr.net/embed-1/v3/e-1/getSources?id=yBH0MU5WRzsE&_k=Mv9eR4...
+      const baseUrl = new URL(epID).origin;
+      const pathMatch = epID.match(/\/embed-1\/v3\/e-1\//);
+      const sourcesUrl = `${baseUrl}/embed-1/v3/e-1/getSources?id=${sourceId}&_k=${_k}`;
+      console.log("sourcesUrl:", sourcesUrl);
 
       const { data: stream_data } = await axios.get(sourcesUrl, {
         headers: {
@@ -76,7 +70,7 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
         },
       });
 
-      console.log("=== STEP 6: stream_data ===", JSON.stringify(stream_data));
+      console.log("stream_data:", JSON.stringify(stream_data));
       decryptedSources = stream_data;
     }
 
