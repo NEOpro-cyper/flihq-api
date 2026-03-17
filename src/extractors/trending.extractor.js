@@ -1,34 +1,43 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import { v1_base_url } from "../utils/base_v1.js";
+import { DEFAULT_HEADERS } from "../configs/header.config.js";
 
-async function fetchAnimeDetails(element) {
-  const data_id = element.attr("data-id");
-  const number = element.find(".number > span").text();
-  const poster = element.find("img").attr("data-src");
-  const title = element.find(".film-title").text().trim();
-  const japanese_title = element.find(".film-title").attr("data-jname").trim();
-  const id = element.find("a").attr("href").split("/").pop();
-  return { id, data_id, number, poster, title, japanese_title };
+const BASE_URL = "https://flixhq.tw";
+
+function extractFilmItems($, container) {
+  const items = [];
+  $(container).find(".flw-item").each((i, ele) => {
+    const anchor = $(".film-poster a", ele);
+    const href = anchor.attr("href") || "";
+    const id = href.split("/").pop();
+    const type = href.startsWith("/movie") ? "movie" : "tv";
+    const poster = $(".film-poster img", ele).attr("data-src") ||
+                   $(".film-poster img", ele).attr("src");
+    const title = $(".film-detail .film-name a", ele).text().trim();
+    const year = $(".fd-infor .fdi-item:first-child", ele).text().trim();
+    const duration = $(".fd-infor .fdi-duration", ele).text().trim();
+    const season = $(".fd-infor .fdi-item:first-child", ele).text().trim();
+    const episodes = $(".fd-infor .fdi-item:nth-child(3)", ele).text().trim();
+
+    if (id && title) {
+      items.push({ id, type, poster, title, year, duration, season, episodes });
+    }
+  });
+  return items;
 }
 
 async function extractTrending() {
   try {
-    const resp = await axios.get(`https://${v1_base_url}/home`);
+    const resp = await axios.get(`${BASE_URL}/home`, { headers: DEFAULT_HEADERS });
     const $ = cheerio.load(resp.data);
 
-    const trendingElements = $("#anime-trending #trending-home .swiper-slide");
-    const elementPromises = trendingElements
-      .map((index, element) => {
-        return fetchAnimeDetails($(element));
-      })
-      .get();
+    const movies = extractFilmItems($, "#trending-movies");
+    const tvShows = extractFilmItems($, "#trending-tv");
 
-    const trendingData = await Promise.all(elementPromises);
-    return JSON.parse(JSON.stringify(trendingData));
+    return { movies, tvShows };
   } catch (error) {
-    console.error("Error fetching data:", error.message);
-    return error;
+    console.error("Error fetching trending:", error.message);
+    return { movies: [], tvShows: [] };
   }
 }
 
