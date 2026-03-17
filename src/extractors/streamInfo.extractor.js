@@ -4,7 +4,7 @@ import { v1_base_url } from "../utils/base_v1.js";
 import { DEFAULT_HEADERS } from "../configs/header.config.js";
 import { decryptSources_v1 } from "../parsers/decryptors/decrypt_v1.decryptor.js";
 
-// Works for both movies (data-linkid) and TV episodes (data-id)
+// For TV episodes
 export async function extractServers(id) {
   try {
     const { data } = await axios.get(
@@ -13,18 +13,13 @@ export async function extractServers(id) {
     );
     const $ = cheerio.load(data);
     const servers = [];
-
     $(".nav-item a.link-item").each((_, el) => {
-      // Movies use data-linkid, TV uses data-id
-      const dataId = $(el).attr("data-id") ||
-                     $(el).attr("data-linkid");
-      const serverName = $(el).find("span").text().trim() ||
-                         $(el).attr("title");
+      const dataId = $(el).attr("data-id") || $(el).attr("data-linkid");
+      const serverName = $(el).find("span").text().trim() || $(el).attr("title");
       if (dataId && serverName) {
         servers.push({ dataId, serverName });
       }
     });
-
     return servers;
   } catch (error) {
     console.error("Servers error:", error.message);
@@ -32,8 +27,7 @@ export async function extractServers(id) {
   }
 }
 
-// But for movies the server list endpoint is different
-// /ajax/episode/list/{movieId} not /ajax/episode/servers/{id}
+// For movies
 export async function extractMovieServers(movieId) {
   try {
     const { data } = await axios.get(
@@ -42,16 +36,13 @@ export async function extractMovieServers(movieId) {
     );
     const $ = cheerio.load(data);
     const servers = [];
-
     $(".nav-item a.link-item").each((_, el) => {
       const dataId = $(el).attr("data-linkid");
-      const serverName = $(el).find("span").text().trim() ||
-                         $(el).attr("title");
+      const serverName = $(el).find("span").text().trim() || $(el).attr("title");
       if (dataId && serverName) {
         servers.push({ dataId, serverName });
       }
     });
-
     return servers;
   } catch (error) {
     console.error("Movie servers error:", error.message);
@@ -65,7 +56,6 @@ async function getEmbedLink(dataId) {
       `https://${v1_base_url}/ajax/episode/sources/${dataId}`,
       { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
     );
-    // Returns { type: "iframe", link: "https://videostr.net/..." }
     return data?.link || null;
   } catch (error) {
     console.error("Embed link error:", error.message);
@@ -76,43 +66,38 @@ async function getEmbedLink(dataId) {
 export async function extractStreamingInfo(episodeId, serverName, type, fallback) {
   try {
     let servers = [];
+    let selectedDataId = null;
 
     if (type === "movie") {
-      // For movies: episodeId IS the linkId (e.g. 12842812)
-      // But we need the movieId to get all servers
-      // Since we already have the linkId, just get embed directly
-      // OR get all servers from /ajax/episode/list/{movieId}
-      // Problem: we only have linkId not movieId here
-      // Solution: just use the linkId directly to get embed
+      // episodeId IS the linkId directly e.g. 12842812
+      selectedDataId = episodeId;
       servers = [{ dataId: episodeId, serverName: serverName || "UpCloud" }];
 
     } else {
-      // For TV: episodeId is the episodeId (e.g. 1676371)
+      // episodeId is episode ID e.g. 1676371
+      // get servers → picks data-id e.g. 13228416
       servers = await extractServers(episodeId);
+      if (!servers.length) throw new Error("No servers found for id: " + episodeId);
+
+      if (serverName.toLowerCase() === "hd-1") serverName = "upcloud";
+      else if (serverName.toLowerCase() === "hd-2") serverName = "megacloud";
+
+      let server = servers.find(
+        (s) => s.serverName.toLowerCase() === serverName.toLowerCase()
+      );
+      if (!server) server = servers[0];
+      selectedDataId = server.dataId;
     }
 
-    if (!servers.length) throw new Error("No servers found for id: " + episodeId);
-
-    // Normalize server names
-    if (serverName.toLowerCase() === "hd-1") serverName = "upcloud";
-    else if (serverName.toLowerCase() === "hd-2") serverName = "megacloud";
-
-    // Pick requested server or default to first
-    let server = servers.find(
-      (s) => s.serverName.toLowerCase() === serverName.toLowerCase()
-    );
-    if (!server) server = servers[0];
-
-    // Get embed URL from /ajax/episode/sources/{dataId}
-    const embedLink = await getEmbedLink(server.dataId);
-    if (!embedLink) throw new Error("No embed link for dataId: " + server.dataId);
+    const embedLink = await getEmbedLink(selectedDataId);
+    if (!embedLink) throw new Error("No embed link for dataId: " + selectedDataId);
 
     console.log("Embed link:", embedLink);
 
     const streamingLink = await decryptSources_v1(
       embedLink,
-      server.dataId,
-      server.serverName,
+      selectedDataId,
+      serverName,
       type,
       fallback
     );
