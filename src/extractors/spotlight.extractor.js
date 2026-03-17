@@ -1,12 +1,11 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { v1_base_url } from "../utils/base_v1.js";
 import { DEFAULT_HEADERS } from "../configs/header.config.js";
-
-const BASE_URL = "https://flixhq.tw";
 
 async function extractSpotlights() {
   try {
-    const resp = await axios.get(`${BASE_URL}/home`, { headers: DEFAULT_HEADERS });
+    const resp = await axios.get(`https://${v1_base_url}/home`, { headers: DEFAULT_HEADERS });
     const $ = cheerio.load(resp.data);
 
     const slides = [];
