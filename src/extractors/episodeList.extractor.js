@@ -5,13 +5,11 @@ import { DEFAULT_HEADERS } from "../configs/header.config.js";
 
 async function extractEpisodesList(id) {
   try {
-    // id format: watch-the-madison-movies-free-147781
     const showId = id.split("-").pop();
-    const type = id.startsWith("watch-tv") || id.includes("/tv/") ? "tv" : "movie";
+    const isMovie = id.startsWith("watch-") && !id.includes("/tv/");
 
-    // Movies: use /ajax/episode/list/{id}
-    // TV Shows: use /ajax/season/list/{id} then /ajax/season/episodes/{seasonId}
-    if (type === "movie") {
+    if (isMovie) {
+      // Movie: GET /ajax/episode/list/{id}
       const resp = await axios.get(
         `https://${v1_base_url}/ajax/episode/list/${showId}`,
         { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
@@ -22,12 +20,13 @@ async function extractEpisodesList(id) {
         const linkId = $(el).attr("data-linkid");
         const serverName = $(el).find("span").text().trim();
         if (linkId && serverName) {
-          servers.push({ linkId, serverName, type: "movie" });
+          servers.push({ linkId, serverName });
         }
       });
       return { type: "movie", servers };
+
     } else {
-      // Get seasons
+      // TV Show: GET /ajax/season/list/{id}
       const seasonResp = await axios.get(
         `https://${v1_base_url}/ajax/season/list/${showId}`,
         { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
