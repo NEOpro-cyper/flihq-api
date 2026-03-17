@@ -29,47 +29,53 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
       decryptedSources = decryptedData;
 
     } else {
-      // epID = embed URL from FlixHQ
-      // e.g. https://videostr.net/embed-1/v3/e-1/gFGvdCzL50U5?z=
       iframeURL = epID;
+      console.log("=== STEP 1: Embed URL ===", epID);
 
-      // Extract sourceId from embed URL
-      // pattern: /e-1/SOURCE_ID?
+      // Extract sourceId
       const sourceIdMatch = /\/e-1\/([^?/]+)/.exec(epID);
       const sourceId = sourceIdMatch?.[1];
+      console.log("=== STEP 2: sourceId ===", sourceId);
       if (!sourceId) throw new Error("Cannot extract sourceId from: " + epID);
 
-      // Fetch embed page to extract _k key
+      // Fetch embed page
       const { data: embedPage } = await axios.get(epID, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
           Referer: "https://flixhq.tw/",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
       });
 
-      // Extract _k from page source
-      // Pattern: getSources?id=XXXX&_k=KEYVALUE
-      const keyMatch = embedPage.match(/getSources\?id=[^&]+&_k=([^"'&\s\\]+)/);
-      const _k = keyMatch?.[1];
-      if (!_k) throw new Error("Cannot extract _k key from embed page: " + epID);
+      console.log("=== STEP 3: Embed page length ===", embedPage.length);
+      console.log("=== STEP 3: Embed page snippet ===", embedPage.substring(0, 500));
 
-      // Build getSources URL
-      // https://videostr.net/embed-1/v3/e-1/getSources?id=gFGvdCzL50U5&_k=KEY
-      const baseUrl = epID.split("/e-1/")[0]; // https://videostr.net/embed-1/v3
+      // Try all possible _k patterns
+      const keyMatch1 = embedPage.match(/getSources\?id=[^&]+&_k=([^"'&\s\\]+)/);
+      const keyMatch2 = embedPage.match(/_k=([^"'&\s\\]+)/);
+      const keyMatch3 = embedPage.match(/['"_]k['"]\s*[:=]\s*['"]([^'"]+)['"]/);
+
+      console.log("=== STEP 4: keyMatch1 ===", keyMatch1?.[1]);
+      console.log("=== STEP 4: keyMatch2 ===", keyMatch2?.[1]);
+      console.log("=== STEP 4: keyMatch3 ===", keyMatch3?.[1]);
+
+      const _k = keyMatch1?.[1] || keyMatch2?.[1] || keyMatch3?.[1];
+      if (!_k) throw new Error("Cannot extract _k key from embed page");
+
+      const baseUrl = epID.split("/e-1/")[0];
       const sourcesUrl = `${baseUrl}/e-1/getSources?id=${sourceId}&_k=${_k}`;
-
-      console.log("Sources URL:", sourcesUrl);
+      console.log("=== STEP 5: sourcesUrl ===", sourcesUrl);
 
       const { data: stream_data } = await axios.get(sourcesUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
           Referer: epID,
           "X-Requested-With": "XMLHttpRequest",
-          "Accept": "application/json, text/plain, */*",
+          Accept: "application/json, text/plain, */*",
         },
       });
 
+      console.log("=== STEP 6: stream_data ===", JSON.stringify(stream_data));
       decryptedSources = stream_data;
     }
 
@@ -90,7 +96,7 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
     };
   } catch (error) {
     console.error(
-      `Error during decryptSources_v1(epID=${epID}, id=${id}, server=${name}):`,
+      `=== ERROR decryptSources_v1 epID=${epID} id=${id} server=${name}:`,
       error.message
     );
     return null;
