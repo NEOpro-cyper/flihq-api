@@ -6,7 +6,18 @@ import { DEFAULT_HEADERS } from "../configs/header.config.js";
 async function extractEpisodesList(id) {
   try {
     const showId = id.split("-").pop();
-    const isMovie = id.startsWith("watch-") && !id.includes("/tv/");
+    // Pass type from the request instead
+// For now check if it has seasons from /ajax/season/list
+// Try TV first, fallback to movie
+const showId = id.split("-").pop();
+
+// Try season list first (TV shows have seasons)
+const testRes = await axios.get(
+  `https://${v1_base_url}/ajax/season/list/${showId}`,
+  { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
+);
+const $test = cheerio.load(testRes.data);
+const isMovie = $test(".ss-item").length === 0;
 
     if (isMovie) {
       // Movie: GET /ajax/episode/list/{id}
