@@ -3,24 +3,29 @@ import * as cheerio from "cheerio";
 import { v1_base_url } from "../utils/base_v1.js";
 import { DEFAULT_HEADERS } from "../configs/header.config.js";
 
-async function extractEpisodesList(id) {
+async function extractEpisodesList(id, typeHint = null) {
   try {
     const showId = id.split("-").pop();
-    // Pass type from the request instead
-// For now check if it has seasons from /ajax/season/list
-// Try TV first, fallback to movie
-const showId = id.split("-").pop();
 
-// Try season list first (TV shows have seasons)
-const testRes = await axios.get(
-  `https://${v1_base_url}/ajax/season/list/${showId}`,
-  { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
-);
-const $test = cheerio.load(testRes.data);
-const isMovie = $test(".ss-item").length === 0;
+    // Determine type — use hint if provided, otherwise detect
+    let isMovie = typeHint === "movie";
+
+    if (!typeHint) {
+      // Auto detect — try season list
+      try {
+        const testRes = await axios.get(
+          `https://${v1_base_url}/ajax/season/list/${showId}`,
+          { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
+        );
+        const $test = cheerio.load(testRes.data);
+        // If has seasons it's TV, otherwise movie
+        isMovie = $test(".ss-item").length === 0;
+      } catch {
+        isMovie = true;
+      }
+    }
 
     if (isMovie) {
-      // Movie: GET /ajax/episode/list/{id}
       const resp = await axios.get(
         `https://${v1_base_url}/ajax/episode/list/${showId}`,
         { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
@@ -29,7 +34,7 @@ const isMovie = $test(".ss-item").length === 0;
       const servers = [];
       $(".nav-item a.link-item").each((_, el) => {
         const linkId = $(el).attr("data-linkid");
-        const serverName = $(el).find("span").text().trim();
+        const serverName = $(el).find("span").text().trim() || $(el).attr("title");
         if (linkId && serverName) {
           servers.push({ linkId, serverName });
         }
@@ -37,7 +42,6 @@ const isMovie = $test(".ss-item").length === 0;
       return { type: "movie", servers };
 
     } else {
-      // TV Show: GET /ajax/season/list/{id}
       const seasonResp = await axios.get(
         `https://${v1_base_url}/ajax/season/list/${showId}`,
         { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
@@ -50,7 +54,6 @@ const isMovie = $test(".ss-item").length === 0;
         if (seasonId) seasons.push({ seasonId, seasonName });
       });
 
-      // Get episodes for each season
       const seasonsWithEpisodes = await Promise.all(
         seasons.map(async (season) => {
           const epsResp = await axios.get(
