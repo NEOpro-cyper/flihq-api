@@ -7,18 +7,15 @@ async function extractEpisodesList(id, typeHint = null) {
   try {
     const showId = id.split("-").pop();
 
-    // Determine type — use hint if provided, otherwise detect
     let isMovie = typeHint === "movie";
 
     if (!typeHint) {
-      // Auto detect — try season list
       try {
         const testRes = await axios.get(
           `https://${v1_base_url}/ajax/season/list/${showId}`,
           { headers: { ...DEFAULT_HEADERS, "X-Requested-With": "XMLHttpRequest" } }
         );
         const $test = cheerio.load(testRes.data);
-        // If has seasons it's TV, otherwise movie
         isMovie = $test(".ss-item").length === 0;
       } catch {
         isMovie = true;
