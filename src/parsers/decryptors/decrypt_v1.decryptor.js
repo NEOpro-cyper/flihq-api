@@ -2,6 +2,16 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import { fallback_1, fallback_2 } from "../../utils/fallback.js";
 
+const PROXY = {
+  host: "p.webshare.io",
+  port: 80,
+  auth: {
+    username: "qijlkvsz-rotate",
+    password: "viryx2zv5njj",
+  },
+  protocol: "http",
+};
+
 export async function decryptSources_v1(epID, id, name, type, fallback) {
   try {
     let decryptedSources = null;
@@ -29,14 +39,11 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
       decryptedSources = decryptedData;
 
     } else {
-      // epID = embed URL from FlixHQ
-      // e.g. https://videostr.net/embed-1/v3/e-1/gFGvdCzL50U5?z=
       iframeURL = epID;
 
       let _k = null;
       let embedPage = null;
 
-      // Retry up to 3 times to get _k key
       for (let attempt = 1; attempt <= 3; attempt++) {
         const { data: page } = await axios.get(epID, {
           headers: {
@@ -45,10 +52,25 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
             "Origin": "https://flixhq.tw",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
+            "sec-fetch-dest": "iframe",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "cross-site",
           },
+          proxy: PROXY,
         });
 
         embedPage = page;
+
+        // Check if Cloudflare blocked the request
+        if (
+          !page.includes("megacloud-player") ||
+          page.includes("cf-browser-verification") ||
+          page.includes("challenge")
+        ) {
+          console.log(`Attempt ${attempt} — Cloudflare blocked, retrying...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
 
         const p1 = page.match(/<!--[^>]*_is_th:([A-Za-z0-9]+)[^>]*-->/);
         const p2 = page.match(/_is_th\s*[=:]\s*["']?([A-Za-z0-9]+)["']?/);
@@ -56,7 +78,7 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
         const p4 = page.match(/nonce\s*=\s*["']([^"']+)["']/);
         const p5 = page.match(/window\._lk_db\s*=\s*\{[^}]*:\s*["']([^"']+)["']/);
 
-_k = p3?.[1] || p1?.[1] || p2?.[1] || p4?.[1] || p5?.[1];
+        _k = p3?.[1] || p1?.[1] || p2?.[1] || p4?.[1] || p5?.[1];
         console.log(`Attempt ${attempt} — _k:`, _k);
 
         if (_k) break;
@@ -80,8 +102,10 @@ _k = p3?.[1] || p1?.[1] || p2?.[1] || p4?.[1] || p5?.[1];
           "X-Requested-With": "XMLHttpRequest",
           "Accept": "application/json, text/plain, */*",
         },
+        proxy: PROXY,
       });
 
+      console.log("stream_data:", JSON.stringify(stream_data));
       decryptedSources = stream_data;
     }
 
