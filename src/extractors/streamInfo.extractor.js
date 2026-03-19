@@ -4,7 +4,6 @@ import { v1_base_url } from "../utils/base_v1.js";
 import { DEFAULT_HEADERS } from "../configs/header.config.js";
 import { decryptSources_v1 } from "../parsers/decryptors/decrypt_v1.decryptor.js";
 
-// For TV episodes
 export async function extractServers(id) {
   try {
     const { data } = await axios.get(
@@ -27,7 +26,6 @@ export async function extractServers(id) {
   }
 }
 
-// For movies
 export async function extractMovieServers(movieId) {
   try {
     const { data } = await axios.get(
@@ -63,19 +61,15 @@ async function getEmbedLink(dataId) {
   }
 }
 
-export async function extractStreamingInfo(episodeId, serverName, type, fallback) {
+async function extractStreamingInfo(episodeId, serverName, type, fallback) {
   try {
     let servers = [];
     let selectedDataId = null;
 
     if (type === "movie") {
-      // episodeId IS the linkId directly e.g. 12842812
       selectedDataId = episodeId;
       servers = [{ dataId: episodeId, serverName: serverName || "UpCloud" }];
-
     } else {
-      // episodeId is episode ID e.g. 1676371
-      // get servers → picks data-id e.g. 13228416
       servers = await extractServers(episodeId);
       if (!servers.length) throw new Error("No servers found for id: " + episodeId);
 
@@ -108,3 +102,5 @@ export async function extractStreamingInfo(episodeId, serverName, type, fallback
     return { streamingLink: null, servers: [] };
   }
 }
+
+export { extractStreamingInfo };
