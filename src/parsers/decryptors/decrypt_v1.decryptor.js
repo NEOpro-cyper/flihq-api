@@ -50,12 +50,13 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
 
         embedPage = page;
 
-        const p1 = page.match(/<!--\s*_is_th:([A-Za-z0-9]+)\s*-->/);
-        const p2 = page.match(/_is_th\s*:\s*([A-Za-z0-9]+)/);
+        const p1 = page.match(/<!--[^>]*_is_th:([A-Za-z0-9]+)[^>]*-->/);
+        const p2 = page.match(/_is_th\s*[=:]\s*["']?([A-Za-z0-9]+)["']?/);
         const p3 = page.match(/window\._xy_ws\s*=\s*["']([^"']+)["']/);
         const p4 = page.match(/nonce\s*=\s*["']([^"']+)["']/);
+        const p5 = page.match(/window\._lk_db\s*=\s*\{[^}]*:\s*["']([^"']+)["']/);
 
-        _k = p1?.[1] || p2?.[1] || p3?.[1] || p4?.[1];
+_k = p3?.[1] || p1?.[1] || p2?.[1] || p4?.[1] || p5?.[1];
         console.log(`Attempt ${attempt} — _k:`, _k);
 
         if (_k) break;
