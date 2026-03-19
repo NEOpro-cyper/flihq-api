@@ -2,20 +2,6 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import { fallback_1, fallback_2 } from "../../utils/fallback.js";
 
-async function fetchWithRetry(url, headers, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const { data } = await axios.get(url, { headers });
-      if (data && data.length > 500) return data;
-      console.log(`Retry ${i + 1} — response too short: ${data.length}`);
-    } catch (e) {
-      console.log(`Retry ${i + 1} failed:`, e.message);
-    }
-    await new Promise(r => setTimeout(r, 1000));
-  }
-  throw new Error("All retries failed for: " + url);
-}
-
 export async function decryptSources_v1(epID, id, name, type, fallback) {
   try {
     let decryptedSources = null;
@@ -43,37 +29,44 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
       decryptedSources = decryptedData;
 
     } else {
+      // epID = embed URL from FlixHQ
+      // e.g. https://videostr.net/embed-1/v3/e-1/gFGvdCzL50U5?z=
       iframeURL = epID;
 
-      const embedHeaders = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Referer": "https://flixhq.tw/",
-        "Origin": "https://flixhq.tw",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Sec-Fetch-Dest": "iframe",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Upgrade-Insecure-Requests": "1",
-      };
+      let _k = null;
+      let embedPage = null;
 
-      const embedPage = await fetchWithRetry(epID, embedHeaders);
+      // Retry up to 3 times to get _k key
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const { data: page } = await axios.get(epID, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Referer": "https://flixhq.tw/",
+            "Origin": "https://flixhq.tw",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+        });
+
+        embedPage = page;
+
+        const p1 = page.match(/<!--\s*_is_th:([A-Za-z0-9]+)\s*-->/);
+        const p2 = page.match(/_is_th\s*:\s*([A-Za-z0-9]+)/);
+        const p3 = page.match(/window\._xy_ws\s*=\s*["']([^"']+)["']/);
+        const p4 = page.match(/nonce\s*=\s*["']([^"']+)["']/);
+
+        _k = p1?.[1] || p2?.[1] || p3?.[1] || p4?.[1];
+        console.log(`Attempt ${attempt} — _k:`, _k);
+
+        if (_k) break;
+        await new Promise(r => setTimeout(r, 1500));
+      }
+
+      if (!_k) throw new Error("Cannot extract _k from embed page after 3 attempts");
 
       const $ = cheerio.load(embedPage);
       const sourceId = $("#megacloud-player").attr("data-id");
-      console.log("sourceId:", sourceId);
       if (!sourceId) throw new Error("Cannot find data-id in embed page");
-
-      const pattern1 = embedPage.match(/<!--\s*_is_th:([A-Za-z0-9]+)\s*-->/);
-      const pattern2 = embedPage.match(/_is_th\s*:\s*([A-Za-z0-9]+)/);
-      const pattern3 = embedPage.match(/window\._xy_ws\s*=\s*["']([^"']+)["']/);
-      const pattern4 = embedPage.match(/nonce\s*=\s*["']([^"']+)["']/);
-
-      const _k = pattern1?.[1] || pattern2?.[1] || pattern3?.[1] || pattern4?.[1];
-      console.log("_k:", _k);
-      if (!_k) throw new Error("Cannot extract _k from embed page");
 
       const baseUrl = new URL(epID).origin;
       const sourcesUrl = `${baseUrl}/embed-1/v3/e-1/getSources?id=${sourceId}&_k=${_k}`;
@@ -85,12 +78,9 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
           "Referer": epID,
           "X-Requested-With": "XMLHttpRequest",
           "Accept": "application/json, text/plain, */*",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Origin": new URL(epID).origin,
         },
       });
 
-      console.log("stream_data:", JSON.stringify(stream_data));
       decryptedSources = stream_data;
     }
 
@@ -111,7 +101,7 @@ export async function decryptSources_v1(epID, id, name, type, fallback) {
     };
   } catch (error) {
     console.error(
-      `=== ERROR decryptSources_v1 epID=${epID} id=${id} server=${name}:`,
+      `Error during decryptSources_v1(epID=${epID}, id=${id}, server=${name}):`,
       error.message
     );
     return null;
